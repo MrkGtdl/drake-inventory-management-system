@@ -1,9 +1,54 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization } from "better-auth/plugins";
+import nodemailer from "nodemailer";
 
 import { prisma } from "@/lib/prisma";
 import { ac, owner, admin, member } from "@/lib/permissions";
+
+// Mailtrap email configuration
+async function sendAppEmail({
+  to,
+  subject,
+  text,
+}: {
+  to: string;
+  subject: string;
+  text: string;
+}) {
+  const host = process.env.MAILTRAP_HOST;
+  const port = Number(process.env.MAILTRAP_PORT || 2525);
+  const user = process.env.MAILTRAP_USER;
+  const pass = process.env.MAILTRAP_PASS;
+  const from = process.env.MAIL_FROM || "Inventory System <hello@example.com>";
+
+  if (!host || !user || !pass) {
+    throw new Error("Mailtrap SMTP environment variables are missing.");
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: {
+      user,
+      pass,
+    },
+  });
+
+  const result = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+  });
+
+  console.info("Email sent successfully:", {
+    to,
+    subject,
+    messageId: result.messageId,
+  });
+}
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -71,13 +116,19 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
 
     async sendResetPassword({ user, url }) {
-      if (process.env.NODE_ENV !== "development") {
-        throw new Error("Password reset email delivery is not configured.");
-      }
-
-      console.info("Development password reset", {
-        email: user.email,
-        resetUrl: url,
+      await sendAppEmail({
+        to: user.email,
+        subject: "Reset your Inventory System password",
+        text: [
+          `Hello ${user.name || "User"},`,
+          "",
+          "We received a request to reset your password.",
+          "",
+          "Use the link below to reset your password:",
+          url,
+          "",
+          "If you did not request this, you can ignore this email.",
+        ].join("\n"),
       });
     },
   },
@@ -86,16 +137,19 @@ export const auth = betterAuth({
     sendOnSignUp: true,
 
     async sendVerificationEmail({ user, url }) {
-      if (
-        process.env.NODE_ENV !== "development" &&
-        process.env.SEEDING !== "true"
-      ) {
-        throw new Error("Email verification delivery is not configured.");
-      }
-
-      console.info("Development email verification", {
-        email: user.email,
-        verificationUrl: url,
+      await sendAppEmail({
+        to: user.email,
+        subject: "Verify your Inventory System email",
+        text: [
+          `Hello ${user.name || "User"},`,
+          "",
+          "Thank you for registering with Inventory System.",
+          "",
+          "Please verify your email address using this link:",
+          url,
+          "",
+          "If you did not create this account, you can ignore this email.",
+        ].join("\n"),
       });
     },
   },
@@ -116,22 +170,72 @@ export const auth = betterAuth({
         maximumRolesPerOrganization: 25,
       },
 
-      async sendInvitationEmail(data) {
-        const inviteLink = new URL(
-          `/accept-invitation/${data.id}`,
-          process.env.BETTER_AUTH_URL,
-        ).toString();
+      // Initialize inventory resources when an organization is created.
+      organizationHooks: {
+        afterCreateOrganization: async ({ organization }) => {
+          await prisma.$transaction(async (tx) => {
+            // Create the default warehouse.
+            await tx.warehouse.upsert({
+              where: {
+                organizationId_code: {
+                  organizationId: organization.id,
+                  code: "MAIN",
+                },
+              },
+              create: {
+                organizationId: organization.id,
+                name: "Main Warehouse",
+                code: "MAIN",
+                description: "Default inventory storage location",
+                isDefault: true,
+                isActive: true,
+              },
+              update: {},
+            });
 
-        if (process.env.NODE_ENV === "development") {
-          console.info("Development organization invitation", {
-            email: data.email,
-            organization: data.organization.name,
-            inviteLink,
+            // Initialize the organization's SKU counter.
+            await tx.skuCounter.upsert({
+              where: {
+                organizationId: organization.id,
+              },
+              create: {
+                organizationId: organization.id,
+                lastValue: 0,
+              },
+              update: {},
+            });
           });
-          return;
+        },
+      },
+
+      // Send organization invitation through Mailtrap.
+      async sendInvitationEmail(data) {
+        const baseURL = process.env.BETTER_AUTH_URL;
+
+        if (!baseURL) {
+          throw new Error("BETTER_AUTH_URL is not configured.");
         }
 
-        throw new Error("Invitation email delivery is not configured.");
+        const inviteLink = new URL(
+          `/accept-invitation/${data.id}`,
+          baseURL,
+        ).toString();
+
+        await sendAppEmail({
+          to: data.email,
+          subject: `Invitation to join ${data.organization.name}`,
+          text: [
+            `Hello,`,
+            "",
+            `You have been invited to join ${data.organization.name}.`,
+            `Your assigned role is: ${data.role}.`,
+            "",
+            "Open the link below to create your account or sign in and accept the invitation:",
+            inviteLink,
+            "",
+            "If you were not expecting this invitation, you can ignore this email.",
+          ].join("\n"),
+        });
       },
     }),
   ],

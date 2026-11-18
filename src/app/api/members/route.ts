@@ -16,6 +16,11 @@ const removeMemberSchema = z.object({
   memberId: z.string().min(1),
 });
 
+const inviteMemberSchema = z.object({
+  email: z.string().trim().email().max(255),
+  role: z.enum(["member", "supervisor"]).default("member"),
+});
+
 function getMemberRoles(role: string) {
   return role
     .split(",")
@@ -81,6 +86,93 @@ export async function GET() {
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
+// POST: Invite member to organization
+export async function POST(request: Request) {
+  try {
+    const context = await requirePermission({
+      invitation: ["create"],
+    });
+
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Invalid JSON request body." },
+        { status: 400 },
+      );
+    }
+
+    const validation = inviteMemberSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid invitation data.",
+          details: validation.error.flatten(),
+        },
+        { status: 400 },
+      );
+    }
+
+    const { email, role } = validation.data;
+    const requestHeaders = await headers();
+
+    const invitation = await auth.api.createInvitation({
+      headers: requestHeaders,
+      body: {
+        email,
+        role,
+        organizationId: context.organizationId,
+      },
+    });
+
+    try {
+      await createAuditLog({
+        organizationId: context.organizationId,
+        actorId: context.user.id,
+        action: "MEMBER_INVITED",
+        entity: "Invitation",
+        entityId: invitation.id,
+        description: `Invited ${email} as ${role}.`,
+        metadata: {
+          email,
+          role,
+        },
+      });
+    } catch (auditError) {
+      console.error(
+        "Invitation created, but audit logging failed:",
+        auditError,
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Invitation sent successfully.",
+        data: invitation,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
+
+    console.error("Create member invitation failed:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Unable to send member invitation.",
+      },
       { status: 500 },
     );
   }

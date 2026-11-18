@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -12,27 +7,40 @@ datasource db {
   provider = "postgresql"
 }
 
+enum StockMovementType {
+  PURCHASE_RECEIPT
+  SALE
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  RETURN_IN
+  RETURN_OUT
+}
+
 model User {
-  id                       String       @id
+  id                       String   @id
   name                     String
   email                    String
-  emailVerified            Boolean      @default(false)
+  emailVerified            Boolean  @default(false)
   image                    String?
-  platformRole             String       @default("user")
+  platformRole             String   @default("user")
   lastActiveOrganizationId String?
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
-  auditLogs     AuditLog[]     @relation("AuditLogActor")
-  notifications Notification[] @relation("NotificationRecipient")
-  sessions      Session[]
-  accounts      Account[]
-  members       Member[]
-  invitations   Invitation[]
+  auditLogs      AuditLog[]      @relation("AuditLogActor")
+  notifications  Notification[]  @relation("NotificationRecipient")
+  sessions       Session[]
+  accounts       Account[]
+  members        Member[]
+  invitations    Invitation[]
+  stockMovements StockMovement[] @relation("StockMovementActor")
 
   @@unique([email])
   @@map("user")
 }
+
 model Session {
   id                   String   @id
   expiresAt            DateTime
@@ -82,29 +90,34 @@ model Verification {
   @@map("verification")
 }
 
-
 model Organization {
-  id          String   @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
+  id        String   @id
+  name      String
+  slug      String
+  logo      String?
+  createdAt DateTime
+  metadata  String?
 
-  // Better Auth relations
   organizationroles OrganizationRole[]
   members           Member[]
   invitations       Invitation[]
 
-  // Custom relations
-  auditLogs      AuditLog[]
-  settings       SystemSetting[]
+  auditLogs     AuditLog[]
+  settings      SystemSetting[]
   notifications Notification[]
+
+  // Inventory relations
+  warehouses        Warehouse[]
+  productCategories ProductCategory[]
+  products          Product[]
+  suppliers         Supplier[]
+  inventoryBalances InventoryBalance[]
+  stockMovements    StockMovement[]
+  skuCounter        SkuCounter?
 
   @@unique([slug])
   @@map("organization")
 }
-
 
 model Member {
   id             String       @id
@@ -151,24 +164,23 @@ model OrganizationRole {
   @@map("organizationRole")
 }
 
-
 model AuditLog {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  actorId        String?
-  actor          User?        @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId String?
+  actor   User?   @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
 
-  action         String
-  entity         String
-  entityId       String?
-  description    String?
-  metadata       Json?
-  ipAddress      String?
-  userAgent      String?
+  action      String
+  entity      String
+  entityId    String?
+  description String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
 
-  createdAt      DateTime     @default(now())
+  createdAt DateTime @default(now())
 
   @@index([organizationId, createdAt])
   @@index([actorId])
@@ -181,13 +193,13 @@ model SystemSetting {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  key            String
-  value          Json
-  category       String       @default("general")
-  description    String?
-  
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  key         String
+  value       Json
+  category    String  @default("general")
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([organizationId, key])
   @@index([organizationId, category])
@@ -195,24 +207,215 @@ model SystemSetting {
 }
 
 model Notification {
-  id             String        @id @default(cuid())
+  id String @id @default(cuid())
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  userId         String
-  user           User          @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
 
-  title          String
-  message        String
-  type           String        @default("info")
-  link           String?
-  metadata       Json?
+  title    String
+  message  String
+  type     String  @default("info")
+  link     String?
+  metadata Json?
 
-  readAt         DateTime?
-  createdAt      DateTime      @default(now())
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId, readAt])
   @@index([organizationId, createdAt])
   @@map("notification")
+}
+
+// ==========================================
+// INVENTORY MANAGEMENT
+// ==========================================
+
+model Warehouse {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  code        String
+  address     String?
+  description String?
+  isDefault   Boolean @default(false)
+  isActive    Boolean @default(true)
+
+  inventoryBalances InventoryBalance[]
+  stockMovements    StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+  @@map("warehouse")
+}
+
+model ProductCategory {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@map("productCategory")
+}
+
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  categoryId String?
+  category   ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  sku         String
+  barcode     String?
+  name        String
+  description String?
+
+  unit         String  @default("pcs")
+  costPrice    Decimal @default(0) @db.Decimal(18, 2)
+  sellingPrice Decimal @default(0) @db.Decimal(18, 2)
+  reorderLevel Decimal @default(0) @db.Decimal(18, 3)
+
+  image    String?
+  isActive Boolean @default(true)
+
+  inventoryBalances InventoryBalance[]
+  stockMovements    StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, sku])
+  @@unique([organizationId, barcode])
+  @@index([organizationId, name])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, isActive])
+  @@map("product")
+}
+
+// ==========================================
+// SUPPLIERS MANAGEMENT
+// ==========================================
+
+model Supplier {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  code          String
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  website       String?
+
+  address    String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String?
+  taxId      String?
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, name])
+  @@index([organizationId, email])
+  @@index([organizationId, phone])
+  @@index([organizationId, isActive])
+  @@map("supplier")
+}
+
+model InventoryBalance {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  quantityOnHand   Decimal @default(0) @db.Decimal(18, 3)
+  reservedQuantity Decimal @default(0) @db.Decimal(18, 3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, warehouseId])
+  @@index([organizationId, warehouseId])
+  @@index([organizationId, productId])
+  @@map("inventoryBalance")
+}
+
+model StockMovement {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  actorId String?
+  actor   User?   @relation("StockMovementActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  type     StockMovementType
+  quantity Decimal           @db.Decimal(18, 3)
+  unitCost Decimal?          @db.Decimal(18, 2)
+
+  reference       String?
+  transferGroupId String?
+  notes           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, productId, createdAt])
+  @@index([organizationId, warehouseId, createdAt])
+  @@index([organizationId, supplierId, createdAt])
+  @@index([transferGroupId])
+  @@index([actorId])
+  @@map("stockMovement")
+}
+
+model SkuCounter {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  lastValue Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("skuCounter")
 }

@@ -62,7 +62,7 @@ function Brand() {
 
       <div className="min-w-0">
         <p className="truncate text-md font-bold tracking-tight">
-          DRAKE Technologies
+          DRAKE Inventory Management System
         </p>
 
         <p className="hidden text-[7.5px] font-medium uppercase tracking-[0.30em] text-muted-foreground sm:block">
@@ -294,6 +294,7 @@ async function DashboardContent({ children }: { children: React.ReactNode }) {
     notifications,
     notificationUpdates,
     notificationDeletes,
+    products,
   ] = await Promise.all([
     auth.api.hasPermission({
       headers: requestHeaders,
@@ -333,6 +334,10 @@ async function DashboardContent({ children }: { children: React.ReactNode }) {
     auth.api.hasPermission({
       headers: requestHeaders,
       body: { permissions: { notification: ["delete"] } },
+    }),
+    auth.api.hasPermission({
+      headers: requestHeaders,
+      body: { permissions: { product: ["read"] } },
     }),
   ]);
 
@@ -382,6 +387,7 @@ async function DashboardContent({ children }: { children: React.ReactNode }) {
           canReadAuditLogs: isSuperadmin || auditLogs.success,
           canReadSettings: isSuperadmin || settings.success,
           canReadInvitations: isSuperadmin || invitations.success,
+          canReadProducts: isSuperadmin || products.success,
         }}
       >
         {children}

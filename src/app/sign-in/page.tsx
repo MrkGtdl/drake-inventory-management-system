@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
+import Link from "next/link";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -212,6 +213,12 @@ export default function SignInPage() {
                       <Eye className="h-4 w-4" />
                     )}
                   </button>
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-primary underline"
+                  >
+                    Forgot password?
+                  </Link>
                 </div>
               </div>
 

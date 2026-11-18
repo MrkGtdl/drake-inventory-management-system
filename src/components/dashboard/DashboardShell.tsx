@@ -8,7 +8,9 @@ import Sidebar, {
 type DashboardShellProps = {
   children: React.ReactNode;
   isSuperadmin: boolean;
-  permissions: SidebarPermissions;
+  permissions: SidebarPermissions & {
+    canReadProducts: boolean;
+  };
   userName: string;
   userRole: string;
 };

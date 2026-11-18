@@ -12,19 +12,23 @@ import {
   UserRound,
   PanelLeftClose,
   PanelLeftOpen,
+  Package,
 } from "lucide-react";
 
 import SignOutButton from "@/components/dashboard/SignOutButton";
 
+export type SidebarPermissions = {
+  canReadDashboard: boolean;
+  canReadMembers: boolean;
+  canReadAuditLogs: boolean;
+  canReadSettings: boolean;
+  canReadInvitations: boolean;
+  canReadProducts: boolean;
+};
+
 type SidebarProps = {
   isSuperadmin: boolean;
-  permissions: {
-    canReadDashboard: boolean;
-    canReadMembers: boolean;
-    canReadAuditLogs: boolean;
-    canReadSettings: boolean;
-    canReadInvitations: boolean;
-  };
+  permissions: SidebarPermissions;
   collapsed: boolean;
   onToggle: () => void;
   userName: string;
@@ -47,6 +51,12 @@ export default function Sidebar({
       href: "/dashboard",
       icon: LayoutDashboard,
       visible: permissions.canReadDashboard,
+    },
+    {
+      label: "Products",
+      href: "/products",
+      icon: Package,
+      visible: permissions.canReadProducts,
     },
     {
       label: "Members",
@@ -82,7 +92,6 @@ export default function Sidebar({
 
   return (
     <aside className="sticky top-16 flex h-[calc(100dvh-4rem)] w-full min-w-0 flex-col self-start border-r bg-background p-3">
-      {/* Sidebar Header */}
       <div
         className={`mb-6 flex items-center ${
           collapsed ? "justify-center" : "justify-between px-2"
@@ -109,7 +118,6 @@ export default function Sidebar({
         </button>
       </div>
 
-      {/* Navigation */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <nav className="space-y-1">
           {navigation
@@ -147,14 +155,12 @@ export default function Sidebar({
         </nav>
       </div>
 
-      {/* User Profile + Logout */}
       <div className="mt-4 shrink-0 border-t border-border pt-4">
         <div
           className={`flex items-center ${
             collapsed ? "flex-col gap-3" : "gap-2"
           }`}
         >
-          {/* User Information */}
           <div
             className={`flex min-w-0 items-center ${
               collapsed ? "justify-center" : "flex-1 gap-2.5 px-1"
@@ -175,7 +181,6 @@ export default function Sidebar({
             )}
           </div>
 
-          {/* Logout */}
           <div
             className={
               collapsed
@@ -183,7 +188,6 @@ export default function Sidebar({
                 : "shrink-0"
             }
           >
-            {/* Logout */}
             <div className="shrink-0">
               <SignOutButton />
             </div>
