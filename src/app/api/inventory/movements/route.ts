@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission, AuthorizationError } from "@/lib/authorization";
+import { unstable_rethrow } from "next/navigation";
 
 const movementTypes = [
   "PURCHASE_RECEIPT",
@@ -39,9 +40,10 @@ function parseDate(value: string, endOfDay = false) {
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await requirePermission({
-      stockMovement: ["read"],
-    });
+    const context = await requirePermission(
+      { stockMovement: ["read"] },
+      request.headers,
+    );
 
     const params = Object.fromEntries(request.nextUrl.searchParams.entries());
 
@@ -187,6 +189,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    unstable_rethrow(error);
     if (error instanceof AuthorizationError) {
       return NextResponse.json(
         { success: false, error: error.message },

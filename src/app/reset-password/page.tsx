@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const token = searchParams.get("token");
+
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -60,9 +61,11 @@ export default function ResetPasswordPage() {
       <main className="flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-md space-y-4">
           <h1 className="text-2xl font-bold">Password updated</h1>
+
           <p className="text-sm text-muted-foreground">
             Your password has been changed successfully.
           </p>
+
           <button
             onClick={() => router.push("/sign-in")}
             className="w-full rounded-md bg-primary px-4 py-2.5 text-primary-foreground"
@@ -79,6 +82,7 @@ export default function ResetPasswordPage() {
       <form onSubmit={handleSubmit} className="w-full max-w-md space-y-5">
         <div>
           <h1 className="text-3xl font-bold">Reset password</h1>
+
           <p className="mt-2 text-sm text-muted-foreground">
             Create a new password for your account.
           </p>
@@ -119,5 +123,21 @@ export default function ResetPasswordPage() {
         </button>
       </form>
     </main>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center p-6">
+          <p className="text-sm text-muted-foreground">
+            Loading password reset...
+          </p>
+        </main>
+      }
+    >
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

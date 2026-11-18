@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { AuthorizationError, requirePermission } from "@/lib/authorization";
+import { unstable_rethrow } from "next/navigation";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const context = await requirePermission({
-      auditLog: ["read"],
-    });
+    const context = await requirePermission(
+      {
+        auditLog: ["read"],
+      },
+      request.headers,
+    );
 
     const logs = await prisma.auditLog.findMany({
       where: {
@@ -32,6 +36,8 @@ export async function GET() {
       data: logs,
     });
   } catch (error) {
+    unstable_rethrow(error);
+
     if (error instanceof AuthorizationError) {
       return NextResponse.json(
         { success: false, error: error.message },

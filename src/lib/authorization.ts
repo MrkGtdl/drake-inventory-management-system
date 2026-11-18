@@ -13,11 +13,13 @@ export class AuthorizationError extends Error {
   }
 }
 
-async function getAuthenticatedUser() {
-  const requestHeaders = await headers();
+async function getAuthenticatedUser(requestHeaders?: Headers) {
+  // Use incoming request headers when supplied.
+  // Fall back to next/headers for existing callers.
+  const resolvedHeaders = requestHeaders ?? (await headers());
 
   const session = await auth.api.getSession({
-    headers: requestHeaders,
+    headers: resolvedHeaders,
   });
 
   if (!session) {
@@ -35,19 +37,24 @@ async function getAuthenticatedUser() {
   });
 
   return {
-    requestHeaders,
+    requestHeaders: resolvedHeaders,
     session,
     isSuperadmin: user?.platformRole === "superadmin",
   };
 }
 
-export async function requirePermission(permissions: AppPermissions) {
-  const { requestHeaders, session, isSuperadmin } =
-    await getAuthenticatedUser();
+export async function requirePermission(
+  permissions: AppPermissions,
+  requestHeaders?: Headers,
+) {
+  const {
+    requestHeaders: resolvedHeaders,
+    session,
+    isSuperadmin,
+  } = await getAuthenticatedUser(requestHeaders);
 
   const organizationId = session.session.activeOrganizationId;
 
-  // Organization-specific pages still require an active organization.
   if (!organizationId) {
     throw new AuthorizationError(403, "No active organization selected");
   }
@@ -63,7 +70,7 @@ export async function requirePermission(permissions: AppPermissions) {
 
   // Regular users must pass Better Auth permission checks.
   const result = await auth.api.hasPermission({
-    headers: requestHeaders,
+    headers: resolvedHeaders,
     body: {
       permissions,
     },
@@ -80,8 +87,8 @@ export async function requirePermission(permissions: AppPermissions) {
   };
 }
 
-export async function requireSuperadmin() {
-  const { session, isSuperadmin } = await getAuthenticatedUser();
+export async function requireSuperadmin(requestHeaders?: Headers) {
+  const { session, isSuperadmin } = await getAuthenticatedUser(requestHeaders);
 
   if (!isSuperadmin) {
     throw new AuthorizationError(403, "Superadmin access required");

@@ -5,6 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit-log";
 import { AuthorizationError, requirePermission } from "@/lib/authorization";
 
+const optionalText = (maxLength: number) =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? null : value,
+    z.string().trim().max(maxLength).nullable().optional(),
+  );
+
 const createSupplierSchema = z.object({
   code: z
     .string()
@@ -12,21 +19,38 @@ const createSupplierSchema = z.object({
     .min(2)
     .max(50)
     .transform((value) => value.toUpperCase()),
+
   name: z.string().trim().min(2).max(150),
-  contactPerson: z.string().trim().max(150).nullable().optional(),
-  email: z.string().trim().email().max(255).nullable().optional(),
-  phone: z.string().trim().max(50).nullable().optional(),
-  website: z.string().trim().url().max(255).nullable().optional(),
 
-  address: z.string().trim().max(255).nullable().optional(),
-  city: z.string().trim().max(100).nullable().optional(),
-  state: z.string().trim().max(100).nullable().optional(),
-  postalCode: z.string().trim().max(30).nullable().optional(),
-  country: z.string().trim().max(100).nullable().optional(),
+  contactPerson: optionalText(150),
+  email: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? null : value,
+    z.string().trim().email().max(255).nullable().optional(),
+  ),
+  phone: optionalText(50),
+  website: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? null : value,
+    z.string().trim().url().max(255).nullable().optional(),
+  ),
 
-  taxId: z.string().trim().max(100).nullable().optional(),
-  notes: z.string().trim().max(2000).nullable().optional(),
+  address: optionalText(255),
+  city: optionalText(100),
+  state: optionalText(100),
+  postalCode: optionalText(30),
+  country: optionalText(100),
+
+  taxId: optionalText(100),
+  notes: optionalText(2000),
+
   isActive: z.boolean().default(true),
+});
+
+const supplierQuerySchema = z.object({
+  status: z.enum(["active", "inactive", "all"]).default("active"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
 });
 
 function handleAuthorizationError(error: unknown) {
@@ -49,64 +73,48 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
 
+    const queryValidation = supplierQuerySchema.safeParse({
+      status: searchParams.get("status") ?? "active",
+      page: searchParams.get("page") ?? "1",
+      pageSize: searchParams.get("pageSize") ?? "10",
+    });
+
+    if (!queryValidation.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid query parameters",
+          details: queryValidation.error.flatten(),
+        },
+        { status: 400 },
+      );
+    }
+
+    const { status, page, pageSize } = queryValidation.data;
     const search = searchParams.get("search")?.trim();
-    const status = searchParams.get("status") ?? "active";
-
-    const page = Math.max(
-      1,
-      Number.parseInt(searchParams.get("page") ?? "1", 10) || 1,
-    );
-
-    const pageSize = Math.min(
-      100,
-      Math.max(
-        1,
-        Number.parseInt(searchParams.get("pageSize") ?? "10", 10) || 10,
-      ),
-    );
 
     const where = {
       organizationId: context.organizationId,
 
       ...(status === "inactive"
         ? { isActive: false }
-        : status === "all"
-          ? {}
-          : { isActive: true }),
+        : status === "active"
+          ? { isActive: true }
+          : {}),
 
       ...(search
         ? {
             OR: [
-              {
-                code: {
-                  contains: search,
-                  mode: "insensitive" as const,
-                },
-              },
-              {
-                name: {
-                  contains: search,
-                  mode: "insensitive" as const,
-                },
-              },
+              { code: { contains: search, mode: "insensitive" as const } },
+              { name: { contains: search, mode: "insensitive" as const } },
               {
                 contactPerson: {
                   contains: search,
                   mode: "insensitive" as const,
                 },
               },
-              {
-                email: {
-                  contains: search,
-                  mode: "insensitive" as const,
-                },
-              },
-              {
-                phone: {
-                  contains: search,
-                  mode: "insensitive" as const,
-                },
-              },
+              { email: { contains: search, mode: "insensitive" as const } },
+              { phone: { contains: search, mode: "insensitive" as const } },
             ],
           }
         : {}),

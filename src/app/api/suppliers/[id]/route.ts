@@ -5,6 +5,25 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit-log";
 import { AuthorizationError, requirePermission } from "@/lib/authorization";
 
+// Convert blank optional strings into null.
+const optionalText = (maxLength: number) =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? null : value,
+    z.string().trim().max(maxLength).nullable().optional(),
+  );
+
+const optionalEmail = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().email().max(255).nullable().optional(),
+);
+
+const optionalWebsite = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().url().max(255).nullable().optional(),
+);
+
+// PATCH validation
 const updateSupplierSchema = z
   .object({
     code: z
@@ -16,19 +35,21 @@ const updateSupplierSchema = z
       .optional(),
 
     name: z.string().trim().min(2).max(150).optional(),
-    contactPerson: z.string().trim().max(150).nullable().optional(),
-    email: z.string().trim().email().max(255).nullable().optional(),
-    phone: z.string().trim().max(50).nullable().optional(),
-    website: z.string().trim().url().max(255).nullable().optional(),
 
-    address: z.string().trim().max(255).nullable().optional(),
-    city: z.string().trim().max(100).nullable().optional(),
-    state: z.string().trim().max(100).nullable().optional(),
-    postalCode: z.string().trim().max(30).nullable().optional(),
-    country: z.string().trim().max(100).nullable().optional(),
+    contactPerson: optionalText(150),
+    email: optionalEmail,
+    phone: optionalText(50),
+    website: optionalWebsite,
 
-    taxId: z.string().trim().max(100).nullable().optional(),
-    notes: z.string().trim().max(2000).nullable().optional(),
+    address: optionalText(255),
+    city: optionalText(100),
+    state: optionalText(100),
+    postalCode: optionalText(30),
+    country: optionalText(100),
+
+    taxId: optionalText(100),
+    notes: optionalText(2000),
+
     isActive: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
@@ -166,7 +187,6 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       },
       select: {
         id: true,
-        name: true,
       },
     });
 
@@ -180,6 +200,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const supplier = await prisma.supplier.update({
       where: {
         id: existingSupplier.id,
+        organizationId: context.organizationId,
       },
       data: validation.data,
     });
@@ -227,6 +248,18 @@ export async function PATCH(request: Request, { params }: RouteContext) {
           error: "A supplier with this code already exists",
         },
         { status: 409 },
+      );
+    }
+
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2025"
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Supplier not found" },
+        { status: 404 },
       );
     }
 
@@ -291,6 +324,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     await prisma.supplier.delete({
       where: {
         id: existingSupplier.id,
+        organizationId: context.organizationId,
       },
     });
 
@@ -337,6 +371,18 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
             "Supplier cannot be deleted because it is referenced by other records",
         },
         { status: 409 },
+      );
+    }
+
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2025"
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Supplier not found" },
+        { status: 404 },
       );
     }
 
